@@ -839,6 +839,7 @@ func TestPhoenixCommittingTransactions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Could not prepare statement: %s", err)
 		}
+		defer stmt.Close()
 
 		totalRows := 6
 
@@ -910,6 +911,7 @@ func TestPhoenixRollingBackTransactions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Could not prepare statement: %s", err)
 		}
+		defer stmt.Close()
 
 		totalRows := 6
 
@@ -973,6 +975,7 @@ func TestPhoenixPreparedStatements(t *testing.T) {
 		if err != nil {
 			dbt.Fatal(err)
 		}
+		defer stmt.Close()
 
 		totalRows := 6
 
@@ -989,6 +992,7 @@ func TestPhoenixPreparedStatements(t *testing.T) {
 		if err != nil {
 			dbt.Fatal(err)
 		}
+		defer queryStmt.Close()
 
 		var res int
 
@@ -1025,6 +1029,7 @@ func TestPhoenixFetchingMoreRows(t *testing.T) {
 		if err != nil {
 			dbt.Fatal(err)
 		}
+		defer stmt.Close()
 
 		totalRows := 6
 
@@ -1098,6 +1103,7 @@ func TestPhoenixQueryShortcut(t *testing.T) {
 		if err != nil {
 			dbt.Fatal(err)
 		}
+		defer stmt.Close()
 
 		totalRows := 6
 
@@ -1144,6 +1150,7 @@ func TestPhoenixOptimisticConcurrency(t *testing.T) {
 		if err != nil {
 			dbt.Fatal(err)
 		}
+		defer stmt.Close()
 
 		totalRows := 6
 
@@ -1361,7 +1368,10 @@ func TestPhoenixErrorCodeParsing(t *testing.T) {
 
 	defer db.Close()
 
-	_, err = db.Query("SELECT * FROM table_that_does_not_exist")
+	rows, err := db.Query("SELECT * FROM table_that_does_not_exist")
+	if rows != nil {
+		rows.Close()
+	}
 
 	if err == nil {
 		t.Error("Expected error due to selecting from non-existent table, but there was no error.")
@@ -1420,6 +1430,7 @@ func TestPhoenixExecBatch(t *testing.T) {
 		if err != nil {
 			dbt.Fatal(err)
 		}
+		defer queryStmt.Close()
 
 		var res int
 
@@ -1480,6 +1491,7 @@ func TestPhoenixExecBatchConcurrency(t *testing.T) {
 		if err != nil {
 			dbt.Fatal(err)
 		}
+		defer queryStmt.Close()
 
 		var res int
 

@@ -750,6 +750,7 @@ func TestHSQLDBCommittingTransactions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Could not prepare statement: %s", err)
 		}
+		defer stmt.Close()
 
 		totalRows := 6
 
@@ -821,6 +822,7 @@ func TestHSQLDBRollingBackTransactions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Could not prepare statement: %s", err)
 		}
+		defer stmt.Close()
 
 		totalRows := 6
 
@@ -884,6 +886,7 @@ func TestHSQLDBPreparedStatements(t *testing.T) {
 		if err != nil {
 			dbt.Fatal(err)
 		}
+		defer stmt.Close()
 
 		totalRows := 6
 
@@ -900,6 +903,7 @@ func TestHSQLDBPreparedStatements(t *testing.T) {
 		if err != nil {
 			dbt.Fatal(err)
 		}
+		defer queryStmt.Close()
 
 		var res int
 
@@ -936,6 +940,7 @@ func TestHSQLDBFetchingMoreRows(t *testing.T) {
 		if err != nil {
 			dbt.Fatal(err)
 		}
+		defer stmt.Close()
 
 		totalRows := 6
 
@@ -1009,6 +1014,7 @@ func TestHSQLDBQueryShortcut(t *testing.T) {
 		if err != nil {
 			dbt.Fatal(err)
 		}
+		defer stmt.Close()
 
 		totalRows := 6
 
@@ -1295,6 +1301,7 @@ func TestHSQLDBExecBatch(t *testing.T) {
 		if err != nil {
 			dbt.Fatal(err)
 		}
+		defer queryStmt.Close()
 
 		var res int
 
@@ -1355,6 +1362,7 @@ func TestHSQLDBExecBatchConcurrency(t *testing.T) {
 		if err != nil {
 			dbt.Fatal(err)
 		}
+		defer queryStmt.Close()
 
 		var res int
 
