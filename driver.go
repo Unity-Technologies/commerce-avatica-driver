@@ -105,6 +105,7 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
 	}.Build())
 
 	if err != nil {
+		_ = conn.Close()
 		return nil, conn.avaticaErrorToResponseErrorOrError(err)
 	}
 

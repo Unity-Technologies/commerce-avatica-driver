@@ -30,33 +30,31 @@ type tx struct {
 // Commit commits a transaction
 func (t *tx) Commit() error {
 
-	defer t.enableAutoCommit()
-
 	_, err := t.conn.httpClient.post(context.Background(), message.CommitRequest_builder{
 		ConnectionId: t.conn.connectionId,
 	}.Build())
 
 	if err != nil {
+		_ = t.enableAutoCommit()
 		return t.conn.avaticaErrorToResponseErrorOrError(err)
 	}
 
-	return nil
+	return t.enableAutoCommit()
 }
 
 // Rollback rolls back a transaction
 func (t *tx) Rollback() error {
-
-	defer t.enableAutoCommit()
 
 	_, err := t.conn.httpClient.post(context.Background(), message.RollbackRequest_builder{
 		ConnectionId: t.conn.connectionId,
 	}.Build())
 
 	if err != nil {
+		_ = t.enableAutoCommit()
 		return t.conn.avaticaErrorToResponseErrorOrError(err)
 	}
 
-	return nil
+	return t.enableAutoCommit()
 }
 
 // enableAutoCommit enables auto-commit on the server

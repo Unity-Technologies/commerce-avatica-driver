@@ -21,6 +21,7 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
+	"math"
 
 	avaticaErrors "github.com/apache/calcite-avatica-go/v5/errors"
 	"github.com/apache/calcite-avatica-go/v5/message"
@@ -134,7 +135,7 @@ func (c *conn) exec(ctx context.Context, query string, args []namedValue) (drive
 	}
 
 	if len(args) != 0 {
-		return nil, driver.ErrSkip
+		return c.execPrepared(ctx, query, args)
 	}
 
 	st, err := c.httpClient.post(ctx, message.CreateStatementRequest_builder{
@@ -168,6 +169,20 @@ func (c *conn) exec(ctx context.Context, query string, args []namedValue) (drive
 	}, nil
 }
 
+// execPrepared handles parameterized exec within a single driver call,
+// avoiding the fragile Prepare → Execute → Close lifecycle that
+// database/sql uses when ErrSkip is returned.
+func (c *conn) execPrepared(ctx context.Context, query string, args []namedValue) (driver.Result, error) {
+	prepared, err := c.prepare(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	s := prepared.(*stmt)
+	defer s.Close()
+
+	return s.exec(ctx, args)
+}
+
 // Query prepares and executes a query and returns the result directly.
 func (c *conn) Query(query string, args []driver.Value) (driver.Rows, error) {
 	list := driverValueToNamedValue(args)
@@ -180,7 +195,7 @@ func (c *conn) query(ctx context.Context, query string, args []namedValue) (driv
 	}
 
 	if len(args) != 0 {
-		return nil, driver.ErrSkip
+		return c.queryPrepared(ctx, query, args)
 	}
 
 	st, err := c.httpClient.post(ctx, message.CreateStatementRequest_builder{
@@ -209,6 +224,40 @@ func (c *conn) query(ctx context.Context, query string, args []namedValue) (driv
 	resultSets := res.(*message.ExecuteResponse).GetResults()
 
 	return newRows(c, statementID, true, resultSets), nil
+}
+
+// queryPrepared handles parameterized queries within a single driver call,
+// avoiding the fragile Prepare → Execute → Close lifecycle that
+// database/sql uses when ErrSkip is returned. Statement cleanup is tied
+// to rows.Close() via closeStatement=true.
+func (c *conn) queryPrepared(ctx context.Context, query string, args []namedValue) (driver.Rows, error) {
+	prepared, err := c.prepare(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	s := prepared.(*stmt)
+
+	msg := message.ExecuteRequest_builder{
+		StatementHandle:    s.handle,
+		ParameterValues:    s.parametersToTypedValues(args),
+		FirstFrameMaxSize:  c.config.frameMaxSize,
+		HasParameterValues: true,
+	}.Build()
+
+	if c.config.frameMaxSize <= -1 {
+		msg.SetFirstFrameMaxSize(math.MaxInt32)
+	} else {
+		msg.SetFirstFrameMaxSize(c.config.frameMaxSize)
+	}
+
+	res, err := c.httpClient.post(ctx, msg)
+	if err != nil {
+		_ = s.Close()
+		return nil, c.avaticaErrorToResponseErrorOrError(err)
+	}
+
+	resultSets := res.(*message.ExecuteResponse).GetResults()
+	return newRows(c, s.statementID, true, resultSets), nil
 }
 
 func (c *conn) avaticaErrorToResponseErrorOrError(err error) error {
