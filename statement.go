@@ -51,6 +51,11 @@ func (s *stmt) Close() error {
 			Updates:      s.batchUpdates,
 		}.Build())
 		if err != nil {
+			// Still close the statement on the server so we do not leak it after a failed batch flush.
+			_, _ = s.conn.httpClient.post(context.Background(), message.CloseStatementRequest_builder{
+				ConnectionId: s.conn.connectionId,
+				StatementId:  s.statementID,
+			}.Build())
 			return s.conn.avaticaErrorToResponseErrorOrError(err)
 		}
 	}

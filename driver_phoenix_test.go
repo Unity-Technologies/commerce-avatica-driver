@@ -252,8 +252,8 @@ func TestPhoenixDataTypes(t *testing.T) {
 		}
 
 		comparisons := []struct {
-			result   interface{}
-			expected interface{}
+			result   any
+			expected any
 		}{
 			{integer, integerValue},
 			{uinteger, uintegerValue},
@@ -434,8 +434,8 @@ func TestPhoenixSQLNullTypes(t *testing.T) {
 		}
 
 		comparisons := []struct {
-			result   interface{}
-			expected interface{}
+			result   any
+			expected any
 		}{
 			{integer, integerValue},
 			{uinteger, uintegerValue},
@@ -590,8 +590,8 @@ func TestPhoenixNulls(t *testing.T) {
 		}
 
 		comparisons := []struct {
-			result   interface{}
-			expected interface{}
+			result   any
+			expected any
 		}{
 			{integer, sql.NullInt64{}},
 			{uinteger, sql.NullInt64{}},
@@ -868,6 +868,7 @@ func TestPhoenixCommittingTransactions(t *testing.T) {
 		tx.Commit()
 
 		rows := dbt.mustQuery("SELECT COUNT(*) FROM " + dbt.tableName)
+		defer rows.Close()
 
 		var countAfterRollback int
 
@@ -938,6 +939,7 @@ func TestPhoenixRollingBackTransactions(t *testing.T) {
 		tx.Rollback()
 
 		rows := dbt.mustQuery(`SELECT COUNT(*) FROM ` + dbt.tableName)
+		defer rows.Close()
 
 		var countAfterRollback int
 
@@ -1195,8 +1197,7 @@ func TestPhoenixOptimisticConcurrency(t *testing.T) {
 			dbt.Fatal("Expected an error, but did not receive any.")
 		}
 
-		var responseError errors.ResponseError
-		goerrors.As(err, &responseError)
+		responseError, _ := goerrors.AsType[errors.ResponseError](err)
 
 		if responseError.Name != "transaction_conflict_exception" {
 			dbt.Fatal("Expected transaction_conflict")
@@ -1366,8 +1367,7 @@ func TestPhoenixErrorCodeParsing(t *testing.T) {
 		t.Error("Expected error due to selecting from non-existent table, but there was no error.")
 	}
 
-	var resErr errors.ResponseError
-	ok := goerrors.As(err, &resErr)
+	resErr, ok := goerrors.AsType[errors.ResponseError](err)
 
 	if !ok {
 		t.Fatalf("Error type was not ResponseError")
@@ -1458,16 +1458,13 @@ func TestPhoenixExecBatchConcurrency(t *testing.T) {
 
 		var wg sync.WaitGroup
 		for i := 1; i <= totalRows; i++ {
-			wg.Add(1)
-			go func(num int) {
-				defer wg.Done()
-
-				_, err := stmt.Exec(num)
+			wg.Go(func() {
+				_, err := stmt.Exec(i)
 
 				if err != nil {
 					dbt.Fatal(err)
 				}
-			}(i)
+			})
 		}
 		wg.Wait()
 

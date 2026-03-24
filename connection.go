@@ -213,9 +213,7 @@ func (c *conn) query(ctx context.Context, query string, args []namedValue) (driv
 
 func (c *conn) avaticaErrorToResponseErrorOrError(err error) error {
 
-	var avaticaErr avaticaError
-
-	ok := errors.As(err, &avaticaErr)
+	avaticaErr, ok := errors.AsType[avaticaError](err)
 
 	if !ok {
 		return err

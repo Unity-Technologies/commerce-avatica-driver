@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go_version: ["1.23", "1.24"]
+        go_version: ["1.26.1"]
         database:
           - [phoenix, 1.3-4.13]
           - [phoenix, 1.4-4.14]
@@ -45,4 +45,5 @@ jobs:
         env:
           PHOENIX_VERSION: ${{ matrix.database[1] }}
           HSQLDB_VERSION: ${{ matrix.database[1] }}
+          GO_VERSION: ${{ matrix.go_version }}
         run: docker compose run test-${{ matrix.database[0] }}

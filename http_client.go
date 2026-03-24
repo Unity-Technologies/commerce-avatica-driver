@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"regexp"
 	"runtime"
+	"slices"
 	"time"
 
 	avaticaMessage "github.com/apache/calcite-avatica-go/v5/message"
@@ -159,10 +160,8 @@ func (c *httpClient) post(ctx context.Context, message proto.Message) (proto.Mes
 
 	if v, ok := inner.(*avaticaMessage.ErrorResponse); ok {
 
-		for _, exception := range v.GetExceptions() {
-			if badConnRe.MatchString(exception) {
-				return nil, driver.ErrBadConn
-			}
+		if slices.ContainsFunc(v.GetExceptions(), badConnRe.MatchString) {
+			return nil, driver.ErrBadConn
 		}
 
 		return nil, avaticaError{v}
