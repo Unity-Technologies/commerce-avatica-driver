@@ -1,5 +1,3 @@
-//go:build go1.8
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -71,14 +69,16 @@ func TestHSQLDBContext(t *testing.T) {
 		tx, err := dbt.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 
 		if err != nil {
-			t.Errorf("Unexpected error while creating transaction: %s", err)
+			t.Fatalf("Unexpected error while creating transaction: %s", err)
 		}
+		defer func() { _ = tx.Rollback() }()
 
 		stmt, err := tx.PrepareContext(ctx, "INSERT INTO "+dbt.tableName+" VALUES(?,?)")
 
 		if err != nil {
-			t.Errorf("Unexpected error while preparing statement: %s", err)
+			t.Fatalf("Unexpected error while preparing statement: %s", err)
 		}
+		defer stmt.Close()
 
 		res, err := stmt.ExecContext(ctx, 3, "C")
 
@@ -99,14 +99,15 @@ func TestHSQLDBContext(t *testing.T) {
 		err = tx.Commit()
 
 		if err != nil {
-			t.Errorf("Error committing transaction: %s", err)
+			t.Fatalf("Error committing transaction: %s", err)
 		}
 
 		stmt2, err := dbt.db.PrepareContext(ctx, "SELECT * FROM "+dbt.tableName+" WHERE id = ?")
 
 		if err != nil {
-			t.Errorf("Error preparing statement: %s", err)
+			t.Fatalf("Error preparing statement: %s", err)
 		}
+		defer stmt2.Close()
 
 		row := stmt2.QueryRowContext(ctx, 3)
 
@@ -215,8 +216,9 @@ func TestHSQLDBColumnTypes(t *testing.T) {
 		rows, err := dbt.db.QueryContext(ctx, "SELECT * FROM "+dbt.tableName)
 
 		if err != nil {
-			t.Errorf("Unexpected error while selecting from table: %s", err)
+			t.Fatalf("Unexpected error while selecting from table: %s", err)
 		}
+		defer rows.Close()
 
 		columnNames, err := rows.Columns()
 
@@ -270,7 +272,7 @@ func TestHSQLDBColumnTypes(t *testing.T) {
 					nullable: false,
 					ok:       true,
 				},
-				scanType: reflect.TypeOf(int64(0)),
+				scanType: reflect.TypeFor[int64](),
 			},
 			{
 				databaseTypeName: "BIGINT",
@@ -288,7 +290,7 @@ func TestHSQLDBColumnTypes(t *testing.T) {
 					nullable: true,
 					ok:       true,
 				},
-				scanType: reflect.TypeOf(int64(0)),
+				scanType: reflect.TypeFor[int64](),
 			},
 			{
 				databaseTypeName: "TINYINT",
@@ -306,7 +308,7 @@ func TestHSQLDBColumnTypes(t *testing.T) {
 					nullable: true,
 					ok:       true,
 				},
-				scanType: reflect.TypeOf(int64(0)),
+				scanType: reflect.TypeFor[int64](),
 			},
 			{
 				databaseTypeName: "SMALLINT",
@@ -324,7 +326,7 @@ func TestHSQLDBColumnTypes(t *testing.T) {
 					nullable: true,
 					ok:       true,
 				},
-				scanType: reflect.TypeOf(int64(0)),
+				scanType: reflect.TypeFor[int64](),
 			},
 			{
 				databaseTypeName: "DOUBLE",
@@ -342,7 +344,7 @@ func TestHSQLDBColumnTypes(t *testing.T) {
 					nullable: true,
 					ok:       true,
 				},
-				scanType: reflect.TypeOf(float64(0)),
+				scanType: reflect.TypeFor[float64](),
 			},
 			{
 				databaseTypeName: "DECIMAL",
@@ -360,7 +362,7 @@ func TestHSQLDBColumnTypes(t *testing.T) {
 					nullable: true,
 					ok:       true,
 				},
-				scanType: reflect.TypeOf(""),
+				scanType: reflect.TypeFor[string](),
 			},
 			{
 				databaseTypeName: "DECIMAL",
@@ -378,7 +380,7 @@ func TestHSQLDBColumnTypes(t *testing.T) {
 					nullable: true,
 					ok:       true,
 				},
-				scanType: reflect.TypeOf(""),
+				scanType: reflect.TypeFor[string](),
 			},
 			{
 				databaseTypeName: "BOOLEAN",
@@ -396,7 +398,7 @@ func TestHSQLDBColumnTypes(t *testing.T) {
 					nullable: true,
 					ok:       true,
 				},
-				scanType: reflect.TypeOf(false),
+				scanType: reflect.TypeFor[bool](),
 			},
 			{
 				databaseTypeName: "TIME",
@@ -414,7 +416,7 @@ func TestHSQLDBColumnTypes(t *testing.T) {
 					nullable: true,
 					ok:       true,
 				},
-				scanType: reflect.TypeOf(time.Time{}),
+				scanType: reflect.TypeFor[time.Time](),
 			},
 			{
 				databaseTypeName: "DATE",
@@ -432,7 +434,7 @@ func TestHSQLDBColumnTypes(t *testing.T) {
 					nullable: true,
 					ok:       true,
 				},
-				scanType: reflect.TypeOf(time.Time{}),
+				scanType: reflect.TypeFor[time.Time](),
 			},
 			{
 				databaseTypeName: "TIMESTAMP",
@@ -450,7 +452,7 @@ func TestHSQLDBColumnTypes(t *testing.T) {
 					nullable: true,
 					ok:       true,
 				},
-				scanType: reflect.TypeOf(time.Time{}),
+				scanType: reflect.TypeFor[time.Time](),
 			},
 			{
 				databaseTypeName: "VARCHAR",
@@ -468,7 +470,7 @@ func TestHSQLDBColumnTypes(t *testing.T) {
 					nullable: true,
 					ok:       true,
 				},
-				scanType: reflect.TypeOf(""),
+				scanType: reflect.TypeFor[string](),
 			},
 			{
 				databaseTypeName: "CHARACTER",
@@ -486,7 +488,7 @@ func TestHSQLDBColumnTypes(t *testing.T) {
 					nullable: true,
 					ok:       true,
 				},
-				scanType: reflect.TypeOf(""),
+				scanType: reflect.TypeFor[string](),
 			},
 			{
 				databaseTypeName: "BINARY",
@@ -504,7 +506,7 @@ func TestHSQLDBColumnTypes(t *testing.T) {
 					nullable: true,
 					ok:       true,
 				},
-				scanType: reflect.TypeOf([]byte{}),
+				scanType: reflect.TypeFor[[]byte](),
 			},
 			{
 				databaseTypeName: "VARBINARY",
@@ -522,7 +524,7 @@ func TestHSQLDBColumnTypes(t *testing.T) {
 					nullable: true,
 					ok:       true,
 				},
-				scanType: reflect.TypeOf([]byte{}),
+				scanType: reflect.TypeFor[[]byte](),
 			},
 		}
 

@@ -97,7 +97,7 @@ func (dbt *DBTest) fail(method, query string, err error) {
 	dbt.Fatalf("error on %s %s: %s", method, query, err.Error())
 }
 
-func (dbt *DBTest) mustExec(query string, args ...interface{}) (res sql.Result) {
+func (dbt *DBTest) mustExec(query string, args ...any) (res sql.Result) {
 	res, err := dbt.db.Exec(query, args...)
 
 	if err != nil {
@@ -107,7 +107,7 @@ func (dbt *DBTest) mustExec(query string, args ...interface{}) (res sql.Result) 
 	return res
 }
 
-func (dbt *DBTest) mustQuery(query string, args ...interface{}) (rows *sql.Rows) {
+func (dbt *DBTest) mustQuery(query string, args ...any) (rows *sql.Rows) {
 	rows, err := dbt.db.Query(query, args...)
 
 	if err != nil {

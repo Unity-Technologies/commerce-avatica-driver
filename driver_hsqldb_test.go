@@ -243,8 +243,8 @@ func TestHSQLDBDataTypes(t *testing.T) {
 		}
 
 		comparisons := []struct {
-			result   interface{}
-			expected interface{}
+			result   any
+			expected any
 		}{
 			{integer, integerValue},
 			{tint, tintValue},
@@ -385,8 +385,8 @@ func TestHSQLDBSQLNullTypes(t *testing.T) {
 		}
 
 		comparisons := []struct {
-			result   interface{}
-			expected interface{}
+			result   any
+			expected any
 		}{
 			{integer, integerValue},
 			{tint, tintValue},
@@ -508,8 +508,8 @@ func TestHSQLDBNulls(t *testing.T) {
 		}
 
 		comparisons := []struct {
-			result   interface{}
-			expected interface{}
+			result   any
+			expected any
 		}{
 			{integer, sql.NullInt64{}},
 			{tint, sql.NullInt64{}},
@@ -779,6 +779,7 @@ func TestHSQLDBCommittingTransactions(t *testing.T) {
 		tx.Commit()
 
 		rows := dbt.mustQuery("SELECT COUNT(*) FROM " + dbt.tableName)
+		defer rows.Close()
 
 		var countAfterRollback int
 
@@ -849,6 +850,7 @@ func TestHSQLDBRollingBackTransactions(t *testing.T) {
 		tx.Rollback()
 
 		rows := dbt.mustQuery(`SELECT COUNT(*) FROM ` + dbt.tableName)
+		defer rows.Close()
 
 		var countAfterRollback int
 
@@ -1331,16 +1333,13 @@ func TestHSQLDBExecBatchConcurrency(t *testing.T) {
 
 		var wg sync.WaitGroup
 		for i := 1; i <= totalRows; i++ {
-			wg.Add(1)
-			go func(num int) {
-				defer wg.Done()
-
-				_, err := stmt.Exec(num)
+			wg.Go(func() {
+				_, err := stmt.Exec(i)
 
 				if err != nil {
 					dbt.Fatal(err)
 				}
-			}(i)
+			})
 		}
 		wg.Wait()
 

@@ -1,5 +1,3 @@
-//go:build go1.8
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -26,7 +24,7 @@ import (
 	"time"
 )
 
-func (dbt *DBTest) mustExecContext(ctx context.Context, query string, args ...interface{}) (res sql.Result) {
+func (dbt *DBTest) mustExecContext(ctx context.Context, query string, args ...any) (res sql.Result) {
 	res, err := dbt.db.ExecContext(ctx, query, args...)
 
 	if err != nil {
@@ -36,7 +34,7 @@ func (dbt *DBTest) mustExecContext(ctx context.Context, query string, args ...in
 	return res
 }
 
-func (dbt *DBTest) mustQueryContext(ctx context.Context, query string, args ...interface{}) (rows *sql.Rows) {
+func (dbt *DBTest) mustQueryContext(ctx context.Context, query string, args ...any) (rows *sql.Rows) {
 	rows, err := dbt.db.QueryContext(ctx, query, args...)
 
 	if err != nil {
