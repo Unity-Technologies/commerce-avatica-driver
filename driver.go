@@ -36,6 +36,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"maps"
 	"net/http"
 
 	"github.com/apache/calcite-avatica-go/v5/generic"
@@ -127,9 +128,7 @@ func registerConn(conn *conn) error {
 		"AutoCommit":  "true",
 		"Consistency": "8",
 	}
-	for k, v := range conn.connectorInfo {
-		info[k] = v
-	}
+	maps.Copy(info, conn.connectorInfo)
 	// Open a connection to the server
 	req := message.OpenConnectionRequest_builder{
 		ConnectionId: conn.connectionId,

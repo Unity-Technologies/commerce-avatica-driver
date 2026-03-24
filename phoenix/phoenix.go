@@ -73,25 +73,25 @@ func (a Adapter) GetColumnTypeDefinition(col *message.ColumnMetaData) *internal.
 	// Handle scan types
 	switch col.GetType().GetName() {
 	case "INTEGER", "UNSIGNED_INT", "BIGINT", "UNSIGNED_LONG", "TINYINT", "UNSIGNED_TINYINT", "SMALLINT", "UNSIGNED_SMALLINT":
-		column.ScanType = reflect.TypeOf(int64(0))
+		column.ScanType = reflect.TypeFor[int64]()
 
 	case "FLOAT", "UNSIGNED_FLOAT", "DOUBLE", "UNSIGNED_DOUBLE":
-		column.ScanType = reflect.TypeOf(float64(0))
+		column.ScanType = reflect.TypeFor[float64]()
 
 	case "DECIMAL", "VARCHAR", "CHAR":
-		column.ScanType = reflect.TypeOf("")
+		column.ScanType = reflect.TypeFor[string]()
 
 	case "BOOLEAN":
-		column.ScanType = reflect.TypeOf(false)
+		column.ScanType = reflect.TypeFor[bool]()
 
 	case "TIME", "DATE", "TIMESTAMP", "UNSIGNED_TIME", "UNSIGNED_DATE", "UNSIGNED_TIMESTAMP":
-		column.ScanType = reflect.TypeOf(time.Time{})
+		column.ScanType = reflect.TypeFor[time.Time]()
 
 	case "BINARY", "VARBINARY":
-		column.ScanType = reflect.TypeOf([]byte{})
+		column.ScanType = reflect.TypeFor[[]byte]()
 
 	default:
-		column.ScanType = reflect.TypeOf(new(interface{})).Elem()
+		column.ScanType = reflect.TypeFor[any]()
 	}
 
 	// Handle rep type special cases for decimals, floats, date, time and timestamp

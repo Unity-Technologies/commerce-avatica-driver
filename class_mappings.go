@@ -32,7 +32,7 @@ const (
 
 // ClassNameFromRequest takes a message and generates the
 // corresponding Java class name.
-func classNameFromRequest(message interface{}) string {
+func classNameFromRequest(message any) string {
 
 	var class string
 
