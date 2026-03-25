@@ -34,11 +34,19 @@ type stmt struct {
 	parameters   []*message.AvaticaParameter
 	handle       *message.StatementHandle
 	batchUpdates []*message.UpdateBatch
+	closed       bool
 	sync.Mutex
 }
 
 // Close closes a statement
 func (s *stmt) Close() error {
+	s.Lock()
+	if s.closed {
+		s.Unlock()
+		return nil
+	}
+	s.closed = true
+	s.Unlock()
 
 	if s.conn.connectionId == "" {
 		return driver.ErrBadConn
@@ -52,8 +60,8 @@ func (s *stmt) Close() error {
 		}.Build())
 		if err != nil {
 			// Still close the statement on the server so we do not leak it after a failed batch flush.
-			_ = s.conn.closeStatement(context.Background(), s.statementID)
-			return s.conn.avaticaErrorToResponseErrorOrError(err)
+			closeErr := s.conn.closeStatement(context.Background(), s.statementID)
+			return errors.Join(s.conn.avaticaErrorToResponseErrorOrError(err), closeErr)
 		}
 	}
 
@@ -166,7 +174,7 @@ func (s *stmt) query(ctx context.Context, args []namedValue) (driver.Rows, error
 
 	resultSet := res.(*message.ExecuteResponse).GetResults()
 
-	return newRows(s.conn, s.statementID, false, resultSet), nil
+	return newRows(s.conn, s.statementID, ctx, false, resultSet), nil
 }
 
 func (s *stmt) parametersToTypedValues(vals []namedValue) []*message.TypedValue {

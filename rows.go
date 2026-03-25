@@ -39,7 +39,9 @@ type resultSet struct {
 type rows struct {
 	conn             *conn
 	statementID      uint32
+	queryCtx         context.Context
 	closeStatement   bool
+	closed           bool
 	resultSets       []*resultSet
 	currentResultSet int
 	columnNames      []string
@@ -66,12 +68,13 @@ func (r *rows) Columns() []string {
 
 // Close closes the rows iterator.
 func (r *rows) Close() error {
-	if r.conn == nil {
+	if r.closed {
 		return nil
 	}
+	r.closed = true
 
 	var err error
-	if r.closeStatement {
+	if r.closeStatement && r.conn != nil {
 		err = r.conn.closeStatement(context.Background(), r.statementID)
 	}
 	r.conn = nil
@@ -95,7 +98,7 @@ func (r *rows) terminalEOF() error {
 //
 // Next should return io.EOF when there are no more rows.
 func (r *rows) Next(dest []driver.Value) error {
-	if r.conn == nil {
+	if r.closed {
 		return io.EOF
 	}
 
@@ -112,18 +115,24 @@ func (r *rows) Next(dest []driver.Value) error {
 		}
 
 		// Fetch more results from the server
-		res, err := r.conn.httpClient.post(context.Background(), message.FetchRequest_builder{
-			ConnectionId: r.conn.connectionId,
+		fetchCtx := r.queryCtx
+		if fetchCtx == nil {
+			fetchCtx = context.Background()
+		}
+
+		c := r.conn
+		res, err := c.httpClient.post(fetchCtx, message.FetchRequest_builder{
+			ConnectionId: c.connectionId,
 			StatementId:  r.statementID,
 			Offset:       resultSet.offset + uint64(len(resultSet.data)),
-			FrameMaxSize: r.conn.config.frameMaxSize,
+			FrameMaxSize: c.config.frameMaxSize,
 		}.Build())
 
 		if err != nil {
 			if errors.Is(err, driver.ErrBadConn) {
 				_ = r.Close()
 			}
-			return r.conn.avaticaErrorToResponseErrorOrError(err)
+			return c.avaticaErrorToResponseErrorOrError(err)
 		}
 
 		frame := res.(*message.FetchResponse).GetFrame()
@@ -163,7 +172,7 @@ func (r *rows) Next(dest []driver.Value) error {
 }
 
 // newRows create a new set of rows from a result set.
-func newRows(conn *conn, statementID uint32, closeStatement bool, resultSets []*message.ResultSetResponse) *rows {
+func newRows(conn *conn, statementID uint32, queryCtx context.Context, closeStatement bool, resultSets []*message.ResultSetResponse) *rows {
 
 	var rsets []*resultSet
 
@@ -204,6 +213,7 @@ func newRows(conn *conn, statementID uint32, closeStatement bool, resultSets []*
 	return &rows{
 		conn:             conn,
 		statementID:      statementID,
+		queryCtx:         queryCtx,
 		closeStatement:   closeStatement,
 		resultSets:       rsets,
 		currentResultSet: 0,

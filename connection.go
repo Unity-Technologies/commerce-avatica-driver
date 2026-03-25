@@ -150,7 +150,7 @@ func (c *conn) exec(ctx context.Context, query string, args []namedValue) (drive
 
 	statementID := st.(*message.CreateStatementResponse).GetStatementId()
 	recordStatementOpened()
-	defer c.closeStatement(ctx, statementID)
+	defer c.closeStatement(context.Background(), statementID)
 
 	res, err := c.httpClient.post(ctx, message.PrepareAndExecuteRequest_builder{
 		ConnectionId:      c.connectionId,
@@ -221,13 +221,13 @@ func (c *conn) query(ctx context.Context, query string, args []namedValue) (driv
 	}.Build())
 
 	if err != nil {
-		_ = c.closeStatement(ctx, statementID)
-		return nil, c.avaticaErrorToResponseErrorOrError(err)
+		cleanupErr := c.closeStatement(context.Background(), statementID)
+		return nil, errors.Join(c.avaticaErrorToResponseErrorOrError(err), cleanupErr)
 	}
 
 	resultSets := res.(*message.ExecuteResponse).GetResults()
 
-	return newRows(c, statementID, true, resultSets), nil
+	return newRows(c, statementID, ctx, true, resultSets), nil
 }
 
 // queryPrepared handles parameterized queries within a single driver call,
@@ -256,12 +256,12 @@ func (c *conn) queryPrepared(ctx context.Context, query string, args []namedValu
 
 	res, err := c.httpClient.post(ctx, msg)
 	if err != nil {
-		_ = s.Close()
-		return nil, c.avaticaErrorToResponseErrorOrError(err)
+		cleanupErr := s.Close()
+		return nil, errors.Join(c.avaticaErrorToResponseErrorOrError(err), cleanupErr)
 	}
 
 	resultSets := res.(*message.ExecuteResponse).GetResults()
-	return newRows(c, s.statementID, true, resultSets), nil
+	return newRows(c, s.statementID, ctx, true, resultSets), nil
 }
 
 func (c *conn) avaticaErrorToResponseErrorOrError(err error) error {
