@@ -20,6 +20,7 @@ package avatica
 import (
 	"context"
 	"database/sql/driver"
+	"errors"
 	"io"
 	"time"
 
@@ -65,12 +66,23 @@ func (r *rows) Columns() []string {
 
 // Close closes the rows iterator.
 func (r *rows) Close() error {
+	if r.conn == nil {
+		return nil
+	}
+
 	var err error
 	if r.closeStatement {
 		err = r.conn.closeStatement(context.Background(), r.statementID)
 	}
 	r.conn = nil
 	return err
+}
+
+func (r *rows) terminalEOF() error {
+	if err := r.Close(); err != nil {
+		return err
+	}
+	return io.EOF
 }
 
 // Next is called to populate the next row of data into
@@ -83,8 +95,12 @@ func (r *rows) Close() error {
 //
 // Next should return io.EOF when there are no more rows.
 func (r *rows) Next(dest []driver.Value) error {
-	if len(r.resultSets) == 0 {
+	if r.conn == nil {
 		return io.EOF
+	}
+
+	if len(r.resultSets) == 0 {
+		return r.terminalEOF()
 	}
 	resultSet := r.resultSets[r.currentResultSet]
 
@@ -92,7 +108,7 @@ func (r *rows) Next(dest []driver.Value) error {
 
 		if resultSet.done {
 			// Finished iterating through all results
-			return io.EOF
+			return r.terminalEOF()
 		}
 
 		// Fetch more results from the server
@@ -104,6 +120,9 @@ func (r *rows) Next(dest []driver.Value) error {
 		}.Build())
 
 		if err != nil {
+			if errors.Is(err, driver.ErrBadConn) {
+				_ = r.Close()
+			}
 			return r.conn.avaticaErrorToResponseErrorOrError(err)
 		}
 
@@ -114,7 +133,7 @@ func (r *rows) Next(dest []driver.Value) error {
 		// In some cases the server does not return done as true
 		// until it returns a result with no rows
 		if len(frame.GetRows()) == 0 {
-			return io.EOF
+			return r.terminalEOF()
 		}
 
 		for _, row := range frame.GetRows() {
