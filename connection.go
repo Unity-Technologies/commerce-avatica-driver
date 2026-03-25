@@ -272,19 +272,20 @@ func (c *conn) avaticaErrorToResponseErrorOrError(err error) error {
 		return err
 	}
 
+	var respErr avaticaErrors.ResponseError
 	if c.adapter != nil {
-		return c.adapter.ErrorResponseToResponseError(avaticaErr.message)
-	}
-
-	respErr := avaticaErrors.ResponseError{
-		Exceptions:   avaticaErr.message.GetExceptions(),
-		ErrorMessage: avaticaErr.message.GetErrorMessage(),
-		Severity:     int8(avaticaErr.message.GetSeverity()),
-		ErrorCode:    avaticaErrors.ErrorCode(avaticaErr.message.GetErrorCode()),
-		SqlState:     avaticaErrors.SQLState(avaticaErr.message.GetSqlState()),
-		Metadata: &avaticaErrors.RPCMetadata{
-			ServerAddress: message.ServerAddressFromMetadata(avaticaErr.message),
-		},
+		respErr = c.adapter.ErrorResponseToResponseError(avaticaErr.message)
+	} else {
+		respErr = avaticaErrors.ResponseError{
+			Exceptions:   avaticaErr.message.GetExceptions(),
+			ErrorMessage: avaticaErr.message.GetErrorMessage(),
+			Severity:     int8(avaticaErr.message.GetSeverity()),
+			ErrorCode:    avaticaErrors.ErrorCode(avaticaErr.message.GetErrorCode()),
+			SqlState:     avaticaErrors.SQLState(avaticaErr.message.GetSqlState()),
+			Metadata: &avaticaErrors.RPCMetadata{
+				ServerAddress: message.ServerAddressFromMetadata(avaticaErr.message),
+			},
+		}
 	}
 
 	if errors.Is(respErr, avaticaErrors.ErrTooManyOpenStatements) {
