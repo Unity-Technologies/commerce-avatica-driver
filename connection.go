@@ -21,6 +21,7 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
+	"fmt"
 	"math"
 
 	avaticaErrors "github.com/apache/calcite-avatica-go/v5/errors"
@@ -56,6 +57,7 @@ func (c *conn) prepare(ctx context.Context, query string) (driver.Stmt, error) {
 	}
 
 	prepareResponse := response.(*message.PrepareResponse)
+	recordStatementOpened()
 
 	return &stmt{
 		statementID:  prepareResponse.GetStatement().GetId(),
@@ -147,6 +149,7 @@ func (c *conn) exec(ctx context.Context, query string, args []namedValue) (drive
 	}
 
 	statementID := st.(*message.CreateStatementResponse).GetStatementId()
+	recordStatementOpened()
 	defer c.closeStatement(ctx, statementID)
 
 	res, err := c.httpClient.post(ctx, message.PrepareAndExecuteRequest_builder{
@@ -207,6 +210,7 @@ func (c *conn) query(ctx context.Context, query string, args []namedValue) (driv
 	}
 
 	statementID := st.(*message.CreateStatementResponse).GetStatementId()
+	recordStatementOpened()
 
 	res, err := c.httpClient.post(ctx, message.PrepareAndExecuteRequest_builder{
 		ConnectionId:      c.connectionId,
@@ -294,9 +298,34 @@ func (c *conn) ResetSession(_ context.Context) error {
 }
 
 func (c *conn) closeStatement(ctx context.Context, statementID uint32) error {
+	if c.connectionId == "" {
+		return driver.ErrBadConn
+	}
+
 	_, err := c.httpClient.post(ctx, message.CloseStatementRequest_builder{
 		ConnectionId: c.connectionId,
 		StatementId:  statementID,
 	}.Build())
-	return c.avaticaErrorToResponseErrorOrError(err)
+
+	if err == nil {
+		recordStatementCloseSucceeded()
+		return nil
+	}
+
+	recordStatementCloseFailed()
+
+	closeErr := c.avaticaErrorToResponseErrorOrError(err)
+
+	// If statement close fails, this server session may hold leaked state.
+	// Force the connection out of the pool so callers don't reuse it.
+	connectionID := c.connectionId
+	c.connectionId = ""
+
+	if _, connErr := c.httpClient.post(context.Background(), message.CloseConnectionRequest_builder{
+		ConnectionId: connectionID,
+	}.Build()); connErr != nil {
+		closeErr = errors.Join(closeErr, fmt.Errorf("failed to close connection after statement close failure: %w", c.avaticaErrorToResponseErrorOrError(connErr)))
+	}
+
+	return errors.Join(closeErr, driver.ErrBadConn)
 }

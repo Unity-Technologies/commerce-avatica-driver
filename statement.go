@@ -52,24 +52,12 @@ func (s *stmt) Close() error {
 		}.Build())
 		if err != nil {
 			// Still close the statement on the server so we do not leak it after a failed batch flush.
-			_, _ = s.conn.httpClient.post(context.Background(), message.CloseStatementRequest_builder{
-				ConnectionId: s.conn.connectionId,
-				StatementId:  s.statementID,
-			}.Build())
+			_ = s.conn.closeStatement(context.Background(), s.statementID)
 			return s.conn.avaticaErrorToResponseErrorOrError(err)
 		}
 	}
 
-	_, err := s.conn.httpClient.post(context.Background(), message.CloseStatementRequest_builder{
-		ConnectionId: s.conn.connectionId,
-		StatementId:  s.statementID,
-	}.Build())
-
-	if err != nil {
-		return s.conn.avaticaErrorToResponseErrorOrError(err)
-	}
-
-	return nil
+	return s.conn.closeStatement(context.Background(), s.statementID)
 }
 
 // NumInput returns the number of placeholder parameters.
