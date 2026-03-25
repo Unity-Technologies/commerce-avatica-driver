@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	avatacaErrors "github.com/apache/calcite-avatica-go/v5/errors"
 	"github.com/apache/calcite-avatica-go/v5/message"
 	"google.golang.org/protobuf/proto"
 )
@@ -21,13 +22,14 @@ const (
 )
 
 type fakeAvaticaServer struct {
-	t            *testing.T
-	server       *httptest.Server
-	mu           sync.Mutex
-	nextStmtID   uint32
-	stmtQueries  map[uint32]string
-	prepareCount int
-	closeCount   int
+	t             *testing.T
+	server        *httptest.Server
+	mu            sync.Mutex
+	nextStmtID    uint32
+	stmtQueries   map[uint32]string
+	prepareCount  int
+	closeCount    int
+	rejectPrepare bool
 }
 
 func newFakeAvaticaServer(t *testing.T) *fakeAvaticaServer {
@@ -48,6 +50,12 @@ func (f *fakeAvaticaServer) statementCounts() (prepareCount int, closeCount int)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.prepareCount, f.closeCount
+}
+
+func (f *fakeAvaticaServer) setRejectPrepare(reject bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.rejectPrepare = reject
 }
 
 func (f *fakeAvaticaServer) handle(w http.ResponseWriter, r *http.Request) {
@@ -84,6 +92,18 @@ func (f *fakeAvaticaServer) handle(w http.ResponseWriter, r *http.Request) {
 		req := &message.PrepareRequest{}
 		if err := proto.Unmarshal(wire.GetWrappedMessage(), req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		f.mu.Lock()
+		reject := f.rejectPrepare
+		f.mu.Unlock()
+
+		if reject {
+			f.writeResponse(w, "ErrorResponse", message.ErrorResponse_builder{
+				ErrorMessage: "ISE: Too many open statements, limit is 8",
+				Severity:     message.Severity_ERROR_SEVERITY,
+			}.Build())
 			return
 		}
 
@@ -254,6 +274,65 @@ func TestParameterizedQueryRowStatementLifecycle(t *testing.T) {
 	}
 	if counters.CloseFailed != 0 {
 		t.Fatalf("unexpected statement close failures: got %d, want 0", counters.CloseFailed)
+	}
+	if counters.InFlight != 0 {
+		t.Fatalf("unexpected in-flight statement count: got %d, want 0", counters.InFlight)
+	}
+}
+
+// TestTooManyOpenStatementsDiscardsConnection verifies that when the Avatica
+// server returns "Too many open statements", the driver wraps the error with
+// driver.ErrBadConn so that database/sql discards the connection. Subsequent
+// queries must succeed on a fresh connection instead of cascading failures.
+func TestTooManyOpenStatementsDiscardsConnection(t *testing.T) {
+	resetStatementLifecycleStats()
+
+	fakeServer := newFakeAvaticaServer(t)
+	defer fakeServer.close()
+
+	db, err := sql.Open("avatica", fakeServer.server.URL)
+	if err != nil {
+		t.Fatalf("sql.Open failed: %v", err)
+	}
+	defer db.Close()
+
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+
+	ctx := context.Background()
+
+	// First query succeeds — warms the connection pool.
+	var got int64
+	if err := db.QueryRowContext(ctx, "SELECT v FROM test_data WHERE id = ?", 1).Scan(&got); err != nil {
+		t.Fatalf("initial query failed: %v", err)
+	}
+
+	// Tell the fake server to reject the next PrepareRequest with the same
+	// error Druid returns when the statement limit is exceeded.
+	fakeServer.setRejectPrepare(true)
+
+	// This query should fail, but the error must include driver.ErrBadConn so
+	// that database/sql discards the connection.
+	err = db.QueryRowContext(ctx, "SELECT v FROM test_data WHERE id = ?", 2).Scan(&got)
+	if err == nil {
+		t.Fatal("expected error from degraded connection, got nil")
+	}
+	if !errors.Is(err, avatacaErrors.ErrTooManyOpenStatements) {
+		t.Fatalf("expected ErrTooManyOpenStatements in error, got: %v", err)
+	}
+
+	// Allow prepares again — simulates a fresh connection.
+	fakeServer.setRejectPrepare(false)
+
+	// The next query must succeed because database/sql opened a new connection
+	// after discarding the degraded one.
+	if err := db.QueryRowContext(ctx, "SELECT v FROM test_data WHERE id = ?", 3).Scan(&got); err != nil {
+		t.Fatalf("query after recovery failed (cascading failure not fixed): %v", err)
+	}
+
+	counters := StatementLifecycleStats()
+	if counters.ConnectionDiscarded == 0 {
+		t.Fatal("expected ConnectionDiscarded > 0")
 	}
 }
 

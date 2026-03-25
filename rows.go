@@ -22,6 +22,8 @@ import (
 	"database/sql/driver"
 	"errors"
 	"io"
+	"runtime"
+	"sync"
 	"time"
 
 	"github.com/apache/calcite-avatica-go/v5/internal"
@@ -41,6 +43,8 @@ type rows struct {
 	statementID      uint32
 	queryCtx         context.Context
 	closeStatement   bool
+	closeOnce        sync.Once
+	closeErr         error
 	closed           bool
 	resultSets       []*resultSet
 	currentResultSet int
@@ -68,17 +72,17 @@ func (r *rows) Columns() []string {
 
 // Close closes the rows iterator.
 func (r *rows) Close() error {
-	if r.closed {
-		return nil
-	}
-	r.closed = true
+	r.closeOnce.Do(func() {
+		runtime.SetFinalizer(r, nil)
+		r.closed = true
 
-	var err error
-	if r.closeStatement && r.conn != nil {
-		err = r.conn.closeStatement(context.Background(), r.statementID)
-	}
-	r.conn = nil
-	return err
+		if r.closeStatement && r.conn != nil {
+			r.closeErr = r.conn.closeStatement(context.Background(), r.statementID)
+		}
+		r.conn = nil
+	})
+
+	return r.closeErr
 }
 
 func (r *rows) terminalEOF() error {
@@ -210,7 +214,7 @@ func newRows(conn *conn, statementID uint32, queryCtx context.Context, closeStat
 		})
 	}
 
-	return &rows{
+	out := &rows{
 		conn:             conn,
 		statementID:      statementID,
 		queryCtx:         queryCtx,
@@ -218,6 +222,16 @@ func newRows(conn *conn, statementID uint32, queryCtx context.Context, closeStat
 		resultSets:       rsets,
 		currentResultSet: 0,
 	}
+
+	if closeStatement {
+		runtime.SetFinalizer(out, finalizeRows)
+	}
+
+	return out
+}
+
+func finalizeRows(r *rows) {
+	_ = r.Close()
 }
 
 // typedValueToNative converts values from avatica's types to Go's native types

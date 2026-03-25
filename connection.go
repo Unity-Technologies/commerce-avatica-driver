@@ -276,7 +276,7 @@ func (c *conn) avaticaErrorToResponseErrorOrError(err error) error {
 		return c.adapter.ErrorResponseToResponseError(avaticaErr.message)
 	}
 
-	return avaticaErrors.ResponseError{
+	respErr := avaticaErrors.ResponseError{
 		Exceptions:   avaticaErr.message.GetExceptions(),
 		ErrorMessage: avaticaErr.message.GetErrorMessage(),
 		Severity:     int8(avaticaErr.message.GetSeverity()),
@@ -286,6 +286,13 @@ func (c *conn) avaticaErrorToResponseErrorOrError(err error) error {
 			ServerAddress: message.ServerAddressFromMetadata(avaticaErr.message),
 		},
 	}
+
+	if errors.Is(respErr, avaticaErrors.ErrTooManyOpenStatements) {
+		recordConnectionDiscarded()
+		return errors.Join(respErr, driver.ErrBadConn)
+	}
+
+	return respErr
 }
 
 // ResetSession implements driver.SessionResetter.

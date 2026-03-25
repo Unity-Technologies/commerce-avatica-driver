@@ -17,6 +17,11 @@
 
 package errors
 
+import (
+	"errors"
+	"strings"
+)
+
 // Error severity codes
 const (
 	Eunknown int8 = iota
@@ -49,6 +54,11 @@ type ResponseError struct {
 	Name          string
 }
 
+// ErrTooManyOpenStatements is returned (wrapped inside a ResponseError) when
+// the Avatica server rejects a request because the open-statement limit has
+// been exceeded. Callers can detect this condition with errors.Is.
+var ErrTooManyOpenStatements = errors.New("too many open statements")
+
 func (r ResponseError) Error() string {
 
 	msg := "An error was encountered while processing your request"
@@ -60,4 +70,14 @@ func (r ResponseError) Error() string {
 	}
 
 	return msg
+}
+
+// Is reports whether this ResponseError matches target. It recognises
+// ErrTooManyOpenStatements by inspecting ErrorMessage so that callers can use
+// errors.Is(err, errors.ErrTooManyOpenStatements) without needing to unwrap.
+func (r ResponseError) Is(target error) bool {
+	if target == ErrTooManyOpenStatements {
+		return strings.Contains(r.ErrorMessage, "Too many open statements")
+	}
+	return false
 }
