@@ -34,6 +34,7 @@ type conn struct {
 	httpClient    *httpClient
 	adapter       Adapter
 	connectorInfo map[string]string
+	suspectLeaks  int
 }
 
 // Prepare returns a prepared statement, bound to this connection.
@@ -53,6 +54,7 @@ func (c *conn) prepare(ctx context.Context, query string) (driver.Stmt, error) {
 	}.Build())
 
 	if err != nil {
+		c.suspectLeaks++
 		return nil, c.avaticaErrorToResponseErrorOrError(err)
 	}
 
@@ -300,6 +302,9 @@ func (c *conn) avaticaErrorToResponseErrorOrError(err error) error {
 // (From Go 1.10)
 func (c *conn) ResetSession(_ context.Context) error {
 	if c.connectionId == "" {
+		return driver.ErrBadConn
+	}
+	if c.suspectLeaks > 0 {
 		return driver.ErrBadConn
 	}
 	return nil
